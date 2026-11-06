@@ -1,0 +1,47 @@
+# The name shown on GitHub's Actions and Checks pages.
+name: Markdown check
+
+# WHEN to run: whenever a pull request to main is opened or updated.
+on:
+  pull_request:
+    branches: [main]
+
+# WHAT to do: the work below.
+jobs:
+  report-files:
+    # GitHub starts a temporary Linux computer to do this work.
+    runs-on: ubuntu-latest
+
+    # This Action can only read. It cannot change your project.
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Report Markdown and non-Markdown files
+        # Details the commands below need: a temporary login, the PR number, and the repo name.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Ask GitHub for the list of files changed in this PR.
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
+
+          # Sort the list into two groups.
+          markdown=$(echo "$files" | grep -iE '\.(md|mdx)$' || true)
+          other=$(echo "$files" | grep -viE '\.(md|mdx)$' || true)
+
+          # Write the report on the workflow run's summary page.
+          {
+            echo "### Markdown files changed"
+            if [ -n "$markdown" ]; then echo "$markdown" | sed 's/^/- /'; else echo "None"; fi
+            echo
+            echo "### Non-Markdown files changed"
+            if [ -n "$other" ]; then echo "$other" | sed 's/^/- /'; else echo "None"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Add a visible warning for each non-Markdown file. This does not block the PR.
+          if [ -n "$other" ]; then
+            echo "$other" | sed 's/^/::warning::Non-Markdown file changed: /'
+          fi
